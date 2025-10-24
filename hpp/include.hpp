@@ -12,6 +12,11 @@ using namespace std;
 #ifndef INCLUDE_HPP
 #define INCLUDE_HPP
 
+const string AIRLINE = "airline";
+const string CUSTOMER = "customer";
+const bool FREE = 0;
+const bool RESERVED = 1;
+
 inline vector<string> split_string(const string &str, char delimiter)
 {
     vector<string> tokens;
