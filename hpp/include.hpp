@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <memory>
 using namespace std;
 
 #ifndef INCLUDE_HPP

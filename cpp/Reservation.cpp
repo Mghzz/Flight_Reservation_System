@@ -1,6 +1,6 @@
 #include "../hpp/Reservation.hpp"
 
-Reservation::Reservation(int _id, int _flight_id, int _timestamp, string _username, string _status, vector<string> _seats)
+Reservation::Reservation(string _id, string _flight_id, int _timestamp, string _username, string _status, vector<string> _seats)
 {
     id = _id;
     flight_id = _flight_id;

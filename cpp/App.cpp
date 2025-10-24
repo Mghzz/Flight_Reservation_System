@@ -15,3 +15,14 @@ string App::test(string in)
         return "Gave";
     }
 }
+
+vector<string> App::list_flights()
+{
+    vector<string> flights_info;
+
+    for (int i = 0; i < sizeof(flights); i++)
+    {
+        flights_info.push_back(flights[i]->info());
+    }
+    return flights_info;
+}

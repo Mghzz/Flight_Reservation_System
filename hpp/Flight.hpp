@@ -5,14 +5,15 @@
 class Flight
 {
 private:
-    int id;
+    string id;
     string origin;
     string destination;
     string time;
     vector<bool> seat_map;
 
 public:
-    Flight(int _id, string _origin, string _destination, string _time, int col, int row);
+    Flight(string _id, string _origin, string _destination, string _time, int col, int row);
+    string info();
 };
 
 #endif
