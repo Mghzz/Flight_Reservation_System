@@ -1,8 +1,10 @@
-#include <IOhandler.hpp>
+#include "../hpp/IOhandler.hpp"
 
 IOHandler::IOHandler(App *_app)
 {
     app = _app;
+    udp_socket_airline = -1;
+    udp_socket_customer = -1;
 }
 
 void IOHandler::run_server()
@@ -12,8 +14,9 @@ void IOHandler::run_server()
     char buffer[BUFFER_SIZE];
     int opt = 1;
     socklen_t addrlen = sizeof(address);
-    std::vector<int> clients;
+    vector<int> clients;
 
+    // TCP
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0)
     {
@@ -41,13 +44,48 @@ void IOHandler::run_server()
         return;
     }
 
-    std::cout << "Server listening on port " << PORT << "...\n";
+    cout << "Server listening on port " << PORT << "...\n";
+
+    // AIRLINES UDP
+    udp_socket_airline = socket(AF_INET, SOCK_DGRAM, 0);
+    if (udp_socket_airline < 0)
+    {
+        perror("UDP airline socket creation failed");
+    }
+    else
+    {
+        int broadcastEnable = 1;
+        setsockopt(udp_socket_airline, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable));
+
+        memset(&udp_airline_addr, 0, sizeof(udp_airline_addr));
+        udp_airline_addr.sin_family = AF_INET;
+        udp_airline_addr.sin_port = htons(AIRLINES_PORT);
+        udp_airline_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+        cout << "UDP Broadcast ready for airlines on port 9090\n";
+    }
+
+    // CUSTOMERS UDP
+    udp_socket_customer = socket(AF_INET, SOCK_DGRAM, 0);
+    if (udp_socket_customer < 0)
+    {
+        perror("UDP customer socket creation failed");
+    }
+    else
+    {
+        int broadcastEnable = 1;
+        setsockopt(udp_socket_customer, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable));
+
+        memset(&udp_customer_addr, 0, sizeof(udp_customer_addr));
+        udp_customer_addr.sin_family = AF_INET;
+        udp_customer_addr.sin_port = htons(CUSTOMERS_PORT);
+        udp_customer_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+        cout << "UDP Broadcast ready for customers on port 9091\n";
+    }
 
     while (true)
     {
         fd_set readfds;
         FD_ZERO(&readfds);
-
         FD_SET(server_fd, &readfds);
         max_sd = server_fd;
 
@@ -75,7 +113,7 @@ void IOHandler::run_server()
             }
 
             clients.push_back(new_socket);
-            std::cout << "New client connected (fd=" << new_socket << ")\n";
+            cout << "New client connected (fd=" << new_socket << ")\n";
         }
 
         for (auto it = clients.begin(); it != clients.end();)
@@ -89,34 +127,34 @@ void IOHandler::run_server()
 
                 if (bytes_read <= 0)
                 {
-                    std::cout << "Client disconnected (fd=" << sd << ")\n";
+                    cout << "Client disconnected (fd=" << sd << ")\n";
                     close(sd);
                     it = clients.erase(it);
                     continue;
                 }
 
-                std::string msg(buffer);
-                msg.erase(std::remove(msg.begin(), msg.end(), '\n'), msg.end());
-                msg.erase(std::remove(msg.begin(), msg.end(), '\r'), msg.end());
+                string msg(buffer);
+                msg.erase(remove(msg.begin(), msg.end(), '\n'), msg.end());
+                msg.erase(remove(msg.begin(), msg.end(), '\r'), msg.end());
 
-                std::cout << "Received from fd=" << sd << ": " << msg << std::endl;
+                cout << "Received from fd=" << sd << ": " << msg << endl;
 
                 if (msg == "exit" || msg == "EXIT")
                 {
-                    std::cout << "Closing connection for fd=" << sd << "\n";
+                    cout << "Closing connection for fd=" << sd << "\n";
                     close(sd);
                     it = clients.erase(it);
                     continue;
                 }
 
-                std::string response;
+                string response;
                 try
                 {
                     response = handle_command(msg);
                 }
-                catch (std::runtime_error &e)
+                catch (runtime_error &e)
                 {
-                    response = std::string("ERROR ") + e.what();
+                    response = string("ERROR ") + e.what();
                 }
 
                 response += '\n';
@@ -130,35 +168,67 @@ void IOHandler::run_server()
     for (int sd : clients)
         close(sd);
     close(server_fd);
-    std::cout << "Server stopped.\n";
+    cout << "Server stopped.\n";
 }
 
 string IOHandler::handle_command(string command)
 {
-
     vector<string> tokens = split_string(command, ' ');
 
     if (tokens[0] == LIST_FLIGHTS)
     {
         vector<string> list = app->list_flights();
-        string whole_list = "";
+        string whole_list;
         for (int i = 0; i < list.size(); i++)
         {
             whole_list += list[i];
             if (i != list.size() - 1)
-            {
                 whole_list += "\n";
-            }
         }
         return whole_list;
     }
     else if (tokens[0] == REGISTER)
     {
         if (tokens.size() < 4)
-        {
             throw runtime_error(NOTENOUGHARGS);
-        }
-        app->user_register(tokens[1], tokens[2], tokens[3]);
+
+        string role = tokens[1];
+        string username = tokens[2];
+        string password = tokens[3];
+        app->user_register(role, username, password);
+
+        string msg = "BROADCAST NEW_USER " + username + " " + role;
+        broadcast_to_airlines(msg);
+
         return REGISTERED_OK;
+    }
+
+    else if (tokens[0] == "ADD_FLIGHT")
+    {
+        string flightName = tokens[1];
+        // app->add_flight(flightName);
+        string msg = "BROADCAST NEW_FLIGHT " + flightName;
+        broadcast_to_customers(msg);
+        return "FLIGHT_ADDED_OK";
+    }
+
+    return "UNKNOWN_COMMAND";
+}
+
+void IOHandler::broadcast_to_airlines(string msg)
+{
+    if (udp_socket_airline >= 0)
+    {
+        sendto(udp_socket_airline, msg.c_str(), msg.size(), 0,
+               (struct sockaddr *)&udp_airline_addr, sizeof(udp_airline_addr));
+    }
+}
+
+void IOHandler::broadcast_to_customers(string msg)
+{
+    if (udp_socket_customer >= 0)
+    {
+        sendto(udp_socket_customer, msg.c_str(), msg.size(), 0,
+               (struct sockaddr *)&udp_customer_addr, sizeof(udp_customer_addr));
     }
 }
