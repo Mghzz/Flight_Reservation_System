@@ -8,6 +8,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <memory>
+#include <algorithm>
+#include <errno.h>
 using namespace std;
 
 #ifndef INCLUDE_HPP
@@ -15,6 +17,11 @@ using namespace std;
 
 const string AIRLINE = "airline";
 const string CUSTOMER = "customer";
+const string USERNAMEEXISTS = "UsernameAlreadyExists";
+const string NOTENOUGHARGS = "NotEnoughArgs";
+const string LIST_FLIGHTS = "LIST_FLIGHTS";
+const string REGISTER = "REGISTER";
+const string REGISTERED_OK = "REGISTERED OK";
 const bool FREE = 0;
 const bool RESERVED = 1;
 

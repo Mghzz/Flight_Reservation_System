@@ -7,7 +7,7 @@ Reservation::Reservation(string _id, string _flight_id, int _timestamp, string _
     timestamp = _timestamp;
     username = _username;
     status = _status;
-    for (int i = 0; i < sizeof(seats); i++)
+    for (int i = 0; i < seats.size(); i++)
     {
         seats.push_back(_seats[i]);
     }

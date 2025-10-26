@@ -11,6 +11,7 @@ private:
 
 public:
     User(string _username, string _password, string _role);
+    string get_username();
 };
 
 #endif

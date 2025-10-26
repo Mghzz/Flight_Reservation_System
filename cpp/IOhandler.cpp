@@ -1,17 +1,18 @@
-#include "../hpp/IOhandler.hpp"
+#include <IOhandler.hpp>
 
 IOHandler::IOHandler(App *_app)
 {
     app = _app;
 }
 
-void IOHandler::handle_commands()
+void IOHandler::run_server()
 {
-    int server_fd, new_socket;
+    int server_fd, new_socket, max_sd;
     struct sockaddr_in address;
     char buffer[BUFFER_SIZE];
     int opt = 1;
     socklen_t addrlen = sizeof(address);
+    std::vector<int> clients;
 
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0)
@@ -29,53 +30,135 @@ void IOHandler::handle_commands()
     if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
     {
         perror("bind failed");
+        close(server_fd);
         return;
     }
 
-    if (listen(server_fd, 3) < 0)
+    if (listen(server_fd, 10) < 0)
     {
         perror("listen failed");
+        close(server_fd);
         return;
     }
 
     std::cout << "Server listening on port " << PORT << "...\n";
 
-    new_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen);
-    if (new_socket < 0)
-    {
-        perror("accept failed");
-        return;
-    }
-
-    std::cout << " Client connected!\n";
-
     while (true)
     {
-        memset(buffer, 0, BUFFER_SIZE);
-        int bytes_read = read(new_socket, buffer, BUFFER_SIZE - 1);
+        fd_set readfds;
+        FD_ZERO(&readfds);
 
-        if (bytes_read <= 0)
+        FD_SET(server_fd, &readfds);
+        max_sd = server_fd;
+
+        for (int sd : clients)
         {
-            std::cout << " Client disconnected.\n";
-            break;
+            FD_SET(sd, &readfds);
+            if (sd > max_sd)
+                max_sd = sd;
         }
 
-        std::string msg(buffer);
-        string msg2 = app->test(msg);
-        std::cout << " Received: " << msg << std::endl;
-
-        if (msg == "exit" || msg == "EXIT")
+        int activity = select(max_sd + 1, &readfds, NULL, NULL, NULL);
+        if (activity < 0 && errno != EINTR)
         {
-            std::cout << " Exit command received. Closing connection.\n";
-            break;
+            perror("select error");
+            continue;
         }
 
-        std::string response = msg2;
-        send(new_socket, response.c_str(), response.size(), 0);
+        if (FD_ISSET(server_fd, &readfds))
+        {
+            new_socket = accept(server_fd, (struct sockaddr *)&address, &addrlen);
+            if (new_socket < 0)
+            {
+                perror("accept failed");
+                continue;
+            }
+
+            clients.push_back(new_socket);
+            std::cout << "New client connected (fd=" << new_socket << ")\n";
+        }
+
+        for (auto it = clients.begin(); it != clients.end();)
+        {
+            int sd = *it;
+
+            if (FD_ISSET(sd, &readfds))
+            {
+                memset(buffer, 0, BUFFER_SIZE);
+                int bytes_read = recv(sd, buffer, BUFFER_SIZE - 1, 0);
+
+                if (bytes_read <= 0)
+                {
+                    std::cout << "Client disconnected (fd=" << sd << ")\n";
+                    close(sd);
+                    it = clients.erase(it);
+                    continue;
+                }
+
+                std::string msg(buffer);
+                msg.erase(std::remove(msg.begin(), msg.end(), '\n'), msg.end());
+                msg.erase(std::remove(msg.begin(), msg.end(), '\r'), msg.end());
+
+                std::cout << "Received from fd=" << sd << ": " << msg << std::endl;
+
+                if (msg == "exit" || msg == "EXIT")
+                {
+                    std::cout << "Closing connection for fd=" << sd << "\n";
+                    close(sd);
+                    it = clients.erase(it);
+                    continue;
+                }
+
+                std::string response;
+                try
+                {
+                    response = handle_command(msg);
+                }
+                catch (std::runtime_error &e)
+                {
+                    response = std::string("ERROR ") + e.what();
+                }
+
+                response += '\n';
+                send(sd, response.c_str(), response.size(), 0);
+            }
+
+            ++it;
+        }
     }
 
-    close(new_socket);
+    for (int sd : clients)
+        close(sd);
     close(server_fd);
-    std::cout << " Server closed.\n";
-    return;
+    std::cout << "Server stopped.\n";
+}
+
+string IOHandler::handle_command(string command)
+{
+
+    vector<string> tokens = split_string(command, ' ');
+
+    if (tokens[0] == LIST_FLIGHTS)
+    {
+        vector<string> list = app->list_flights();
+        string whole_list = "";
+        for (int i = 0; i < list.size(); i++)
+        {
+            whole_list += list[i];
+            if (i != list.size() - 1)
+            {
+                whole_list += "\n";
+            }
+        }
+        return whole_list;
+    }
+    else if (tokens[0] == REGISTER)
+    {
+        if (tokens.size() < 4)
+        {
+            throw runtime_error(NOTENOUGHARGS);
+        }
+        app->user_register(tokens[1], tokens[2], tokens[3]);
+        return REGISTERED_OK;
+    }
 }

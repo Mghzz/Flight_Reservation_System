@@ -14,7 +14,8 @@ private:
 
 public:
     IOHandler(App *_app);
-    void handle_commands();
+    void run_server();
+    string handle_command(string command);
 };
 
 #endif
