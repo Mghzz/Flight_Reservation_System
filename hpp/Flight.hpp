@@ -14,6 +14,7 @@ private:
 public:
     Flight(string _id, string _origin, string _destination, string _time, int col, int row);
     string info();
+    string get_id();
 };
 
 #endif

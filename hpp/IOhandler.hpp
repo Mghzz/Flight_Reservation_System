@@ -17,11 +17,12 @@ private:
     int udp_socket_customer;
     struct sockaddr_in udp_airline_addr;
     struct sockaddr_in udp_customer_addr;
+    std::unordered_map<int, string> client_usernames;
 
 public:
     IOHandler(App *_app);
     void run_server();
-    string handle_command(string command);
+    string handle_command(int fd, string command);
     void broadcast_to_airlines(string msg);
     void broadcast_to_customers(string msg);
 };

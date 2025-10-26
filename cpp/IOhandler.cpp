@@ -150,7 +150,7 @@ void IOHandler::run_server()
                 string response;
                 try
                 {
-                    response = handle_command(msg);
+                    response = handle_command(sd, msg);
                 }
                 catch (runtime_error &e)
                 {
@@ -171,12 +171,17 @@ void IOHandler::run_server()
     cout << "Server stopped.\n";
 }
 
-string IOHandler::handle_command(string command)
+string IOHandler::handle_command(int fd, string command)
 {
     vector<string> tokens = split_string(command, ' ');
 
+    if (tokens.empty())
+        throw runtime_error(UNKNOWN_COMMAND);
+
     if (tokens[0] == LIST_FLIGHTS)
     {
+        if (client_usernames.find(fd) == client_usernames.end())
+            throw runtime_error(USERNOTREGISTERED);
         vector<string> list = app->list_flights();
         string whole_list;
         for (int i = 0; i < list.size(); i++)
@@ -191,11 +196,15 @@ string IOHandler::handle_command(string command)
     {
         if (tokens.size() < 4)
             throw runtime_error(NOTENOUGHARGS);
+        if (client_usernames.find(fd) != client_usernames.end())
+            throw runtime_error(USERALREADYREGISTERED);
 
         string role = tokens[1];
         string username = tokens[2];
         string password = tokens[3];
         app->user_register(role, username, password);
+
+        client_usernames[fd] = username;
 
         string msg = "BROADCAST NEW_USER " + username + " " + role;
         broadcast_to_airlines(msg);
@@ -203,16 +212,32 @@ string IOHandler::handle_command(string command)
         return REGISTERED_OK;
     }
 
-    else if (tokens[0] == "ADD_FLIGHT")
+    else if (tokens[0] == "LOGIN")
     {
-        string flightName = tokens[1];
-        // app->add_flight(flightName);
-        string msg = "BROADCAST NEW_FLIGHT " + flightName;
-        broadcast_to_customers(msg);
-        return "FLIGHT_ADDED_OK";
+        if (tokens.size() < 3)
+            throw runtime_error(NOTENOUGHARGS);
+        if (client_usernames.find(fd) == client_usernames.end())
+            throw runtime_error(USERNOTREGISTERED);
+        app->login(tokens[1], tokens[2]);
+        return LOGIN_OK;
     }
 
-    return "UNKNOWN_COMMAND";
+    else if (tokens[0] == "ADD_FLIGHT")
+    {
+        if (client_usernames.find(fd) == client_usernames.end())
+            throw runtime_error(USERNOTREGISTERED);
+        if (tokens.size() < 7)
+            throw runtime_error(NOTENOUGHARGS);
+
+        string username = client_usernames[fd];
+        app->add_flight(username, tokens[1], tokens[2], tokens[3], tokens[4], stoi(tokens[5]), stoi(tokens[6]));
+
+        string msg = "BROADCAST NEW_FLIGHT " + tokens[1] + " " + tokens[2] + " " + tokens[3] + " " + tokens[4];
+        broadcast_to_customers(msg);
+        return FLIGHT_ADDED_OK;
+    }
+
+    return UNKNOWN_COMMAND;
 }
 
 void IOHandler::broadcast_to_airlines(string msg)

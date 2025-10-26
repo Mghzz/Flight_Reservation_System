@@ -25,3 +25,8 @@ string Flight::info()
     }
     return "FLIGHT " + id + " " + origin + " " + destination + " " + time + " " + "SEATS_AVAILABLE=" + to_string(available_seats) + "/" + to_string(all_seats);
 }
+
+string Flight::get_id()
+{
+    return id;
+}
